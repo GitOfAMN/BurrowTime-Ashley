@@ -405,7 +405,9 @@ Sync suggests Clockify projects for unmapped local projects and shows their
 clients so similarly named projects are distinguishable. Search, select a
 mapping, then review and edit descriptions, destinations, durations, and
 billable settings before confirming the upload. Rounding applies to each completed entry;
-local times stay exact. Local receipts remember successful uploads so reruns
+matching entries on the same local day are then combined into one upload, starting
+at the earliest entry and lasting the sum of the rounded durations. Project, tags,
+and billable status must match. Local times stay exact. Local receipts remember successful uploads so reruns
 skip them. Uncertain uploads require reconciliation before retrying.
 
 Descriptions contain only your tags: `burrowtime start sema +SEMA-123`
@@ -433,7 +435,9 @@ burrowtime timetable sync --today --dry-run
 burrowtime timetable sync --today
 ```
 
-Timetable receives exact timestamps and stable frame IDs for safe retries.
+Timetable also combines matching entries per local day after applying rounding.
+Combined uploads use the earliest start and summed durations, with stable IDs
+for safe retries.
 Clockify and Timetable mappings and receipts are independent. See
 [Timetable setup and recovery](docs/TIMETABLE.md).
 

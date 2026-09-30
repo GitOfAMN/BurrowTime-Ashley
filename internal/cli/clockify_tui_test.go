@@ -175,6 +175,8 @@ func TestClockifyTUIFitsTerminal(t *testing.T) {
 func TestClockifyMapperOnlySelectsUnmappedInRange(t *testing.T) {
 	stop := int64(2000)
 	frames := []store.Frame{{Start: 1000, Stop: &stop, Project: "portal"}, {Start: 1000, Stop: &stop, Project: "mapped"}, {Start: 100, Stop: &stop, Project: "outside"}, {Start: 1000, Project: "running"}}
+	zeroStop := int64(1000)
+	frames = append(frames, store.Frame{Start: zeroStop, Stop: &zeroStop, Project: "empty"})
 	c := integrations.Config{Projects: map[string]integrations.Mapping{"mapped": {Connection: "other", ProjectID: "other"}}}
 	opts := integrations.Options{Connection: "work", From: time.Unix(900, 0), To: time.Unix(1100, 0)}
 	calls := 0

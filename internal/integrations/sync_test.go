@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,7 +67,7 @@ func TestSyncRoundsEachEntryAndSkipsSecondRun(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if creates != 2 {
+	if creates != 1 {
 		t.Fatalf("duplicate uploads: %d", creates)
 	}
 	l, err := LoadLedger(dir)
@@ -74,7 +75,7 @@ func TestSyncRoundsEachEntryAndSkipsSecondRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, r := range l.Records {
-		if r.RecordedSeconds != 960 || r.ExportSeconds != 1800 || r.RemoteID == "" || r.Status != "synced" {
+		if r.RecordedSeconds != 1920 || r.ExportSeconds != 3600 || r.RemoteID == "" || r.Status != "synced" {
 			t.Fatalf("bad receipt %+v", r)
 		}
 	}
@@ -83,6 +84,80 @@ func TestSyncRoundsEachEntryAndSkipsSecondRun(t *testing.T) {
 	}
 	if l.Records["frame-1"].Entry.Description != "PORTAL-42" {
 		t.Fatal("ticket not preserved")
+	}
+}
+
+func TestSyncSkipsZeroDurationFrames(t *testing.T) {
+	for _, name := range []string{"dry-run", "upload"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c, frames := fixture()
+			stop := frames[0].Start
+			frames = append(frames,
+				store.Frame{ID: "empty-mapped", Start: stop, Stop: &stop, Project: "portal"},
+				store.Frame{ID: "empty-unmapped", Start: stop, Stop: &stop, Project: "unmapped"},
+			)
+			dir := t.TempDir()
+			creates := 0
+			var out bytes.Buffer
+			opts := Options{Connection: "work", DryRun: name == "dry-run"}
+			if err := Sync(context.Background(), dir, c, frames, opts, mockCall(&creates), &out); err != nil {
+				t.Fatal(err)
+			}
+			wantCreates := 1
+			if opts.DryRun {
+				wantCreates = 0
+			}
+			if creates != wantCreates {
+				t.Fatalf("created %d entries, want %d", creates, wantCreates)
+			}
+			for _, id := range []string{"empty-mapped", "empty-unmapped"} {
+				if !strings.Contains(out.String(), "SKIPPED "+id) {
+					t.Fatalf("missing skipped entry %s: %s", id, &out)
+				}
+			}
+			ledger, err := LoadLedger(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(ledger.Records) != wantCreates {
+				t.Fatalf("saved %d receipts, want %d", len(ledger.Records), wantCreates)
+			}
+			if *frames[1].Stop != frames[1].Start || *frames[2].Stop != frames[2].Start {
+				t.Fatal("zero-duration frames were modified")
+			}
+		})
+	}
+}
+
+func TestSyncRejectsInvalidOrPreviouslyExportedEmptyFrames(t *testing.T) {
+	for _, name := range []string{"negative", "previously-exported", "missing-id"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c, frames := fixture()
+			dir := t.TempDir()
+			if name == "previously-exported" {
+				creates := 0
+				if err := Sync(context.Background(), dir, c, frames, Options{Connection: "work"}, mockCall(&creates), io.Discard); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stop := frames[0].Start
+			if name == "negative" {
+				stop--
+			}
+			if name == "missing-id" {
+				frames[0].ID = ""
+			}
+			frames[0].Stop = &stop
+			creates := 0
+			if err := Sync(context.Background(), dir, c, frames, Options{Connection: "work"}, mockCall(&creates), io.Discard); err == nil {
+				t.Fatal("accepted invalid or changed exported frame")
+			}
+			if creates != 0 {
+				t.Fatal("uploaded invalid frame")
+			}
+		})
 	}
 }
 
@@ -173,6 +248,7 @@ func TestPartialFailurePreservesSuccess(t *testing.T) {
 	c, frames := fixture()
 	second := frames[0]
 	second.ID = "frame-2"
+	second.Tags = []string{"different-ticket"}
 	frames = append(frames, second)
 	dir := t.TempDir()
 	creates := 0

@@ -10,16 +10,18 @@ import (
 )
 
 type Receipt struct {
-	FrameID         string `json:"frame_id"`
-	Connection      string `json:"connection"`
-	Target          string `json:"target"`
-	Fingerprint     string `json:"fingerprint"`
-	RemoteID        string `json:"remote_id,omitempty"`
-	Status          string `json:"status"`
-	Entry           Entry  `json:"entry"`
-	RecordedSeconds int64  `json:"recorded_seconds"`
-	ExportSeconds   int64  `json:"export_seconds"`
-	SyncedAt        string `json:"synced_at,omitempty"`
+	GroupID         string    `json:"group_id,omitempty"`
+	Members         []Receipt `json:"members,omitempty"`
+	FrameID         string    `json:"frame_id"`
+	Connection      string    `json:"connection"`
+	Target          string    `json:"target"`
+	Fingerprint     string    `json:"fingerprint"`
+	RemoteID        string    `json:"remote_id,omitempty"`
+	Status          string    `json:"status"`
+	Entry           Entry     `json:"entry"`
+	RecordedSeconds int64     `json:"recorded_seconds"`
+	ExportSeconds   int64     `json:"export_seconds"`
+	SyncedAt        string    `json:"synced_at,omitempty"`
 }
 
 type Ledger struct {
@@ -139,7 +141,7 @@ func RetryPending(dir, name, id string, c Connection) error {
 		return fmt.Errorf("receipt belongs to another connection")
 	}
 	r.Status = "retryable"
-	l.Records[key] = r
+	saveReceipt(&l, c, name, r)
 	return SaveLedger(dir, l)
 }
 
@@ -161,4 +163,19 @@ func Lock(dir string) (func(), error) {
 		return nil, fmt.Errorf("cannot write sync lock")
 	}
 	return func() { _ = os.Remove(path) }, nil
+}
+
+// Persist the shared upload outcome for every source frame in one ledger write.
+func saveReceipt(l *Ledger, c Connection, name string, r Receipt) {
+	if len(r.Members) == 0 {
+		l.Records[receiptKey(c, name, r.FrameID)] = r
+		return
+	}
+	for _, member := range r.Members {
+		record := r
+		record.GroupID = r.GroupID
+		record.FrameID = member.FrameID
+		record.Fingerprint = member.Fingerprint
+		l.Records[receiptKey(c, name, member.FrameID)] = record
+	}
 }

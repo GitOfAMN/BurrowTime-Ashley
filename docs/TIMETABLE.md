@@ -1,6 +1,6 @@
 # Timetable connector
 
-Export completed BurrowTime entries to [Timetable](https://timetable.bluedroplabs.com/) using its [documented API](https://timetable.bluedroplabs.com/api-docs/). Each local frame gets a stable `source=burrowtime` and `external_id`, so retrying a request whose response was lost does not create another Timetable entry.
+Export completed BurrowTime entries to [Timetable](https://timetable.bluedroplabs.com/) using its [documented API](https://timetable.bluedroplabs.com/api-docs/). Each upload gets a stable `source=burrowtime` and `external_id`, so retrying a request whose response was lost does not create another Timetable entry.
 
 ## Install
 
@@ -26,7 +26,9 @@ burrowtime timetable map 'local project' TIMETABLE_PROJECT_UUID
 
 The default site is `https://timetable.bluedroplabs.com`. For another deployment, pass `--url https://your-timetable-host` to `configure`. Use `--token-env NAME` if the token is stored in another environment variable. `--connection NAME` gives a connection its own name. The same local project can be mapped to both Timetable and Clockify; their destinations and receipts remain separate.
 
-Timetable keeps exact seconds. Rounding defaults to `off`; `configure --rounding up --increment 15m` or `map ... --rounding off` works like Clockify's per-entry settings. Timetable has no billable field in this API, so this connector does not send one.
+Matching entries on the same local day are combined by project, tags, and billable status after each duration is rounded. The combined entry starts at the earliest source start and lasts for the summed durations, excluding gaps. Every source frame shares the upload receipt. Previously uploaded entries stay untouched; new entries on that day form a new upload.
+
+Timetable keeps exact seconds when rounding is off. Rounding defaults to `off`; `configure --rounding up --increment 15m` or `map ... --rounding off` works like Clockify's per-entry settings. Timetable has no billable field in this API, so this connector does not send one.
 
 ## Preview and sync
 
