@@ -80,7 +80,7 @@ func projectScore(local, remote string) int {
 func (p *exportPrompter) mapMissing(config *integrations.Config, frames []store.Frame, opts *integrations.Options) error {
 	names := map[string]bool{}
 	for _, f := range frames {
-		if f.Stop == nil {
+		if f.Stop == nil || *f.Stop == f.Start {
 			continue
 		}
 		start := time.Unix(f.Start, 0)

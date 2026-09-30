@@ -171,6 +171,11 @@ func Sync(ctx context.Context, dir string, config Config, frames []store.Frame, 
 		if opts.SkipProjects[f.Project] {
 			continue
 		}
+		_, attempted := ledger.Records[receiptKey(c, opts.Connection, f.ID)]
+		if *f.Stop == f.Start && f.ID != "" && !f.IDNull && !attempted {
+			fmt.Fprintf(out, "SKIPPED %s (%s): zero-second completed entry\n", f.ID, f.Project)
+			continue
+		}
 		if !mapped {
 			unmapped++
 			continue
@@ -191,10 +196,21 @@ func Sync(ctx context.Context, dir string, config Config, frames []store.Frame, 
 				fmt.Fprintf(out, "BLOCKED %s: previously exported or attempted for another destination\n", f.ID)
 				blocked++
 			case old.Status == "pending" && c.Plugin == "timetable" && old.Fingerprint == r.Fingerprint:
+				if old.GroupID != "" {
+					old.FrameID = old.GroupID
+				}
 				queue = append(queue, old)
 			case old.Status == "pending":
 				fmt.Fprintf(out, "BLOCKED %s: earlier upload outcome is uncertain; reconcile it before retrying\n", f.ID)
 				blocked++
+			case old.Status == "retryable" && old.GroupID != "":
+				if old.Fingerprint != r.Fingerprint {
+					blocked++
+					fmt.Fprintf(out, "BLOCKED %s: changed after upload attempt\n", f.ID)
+					break
+				}
+				old.FrameID = old.GroupID
+				queue = append(queue, old)
 			case old.Status == "retryable":
 				queue = append(queue, r)
 			case !matchesFingerprint(old, r, c, m, f):
@@ -213,6 +229,10 @@ func Sync(ctx context.Context, dir string, config Config, frames []store.Frame, 
 		}
 		return queue[i].Entry.Start < queue[j].Entry.Start
 	})
+	queue, err = combineDaily(queue, frames, config, opts.Connection)
+	if err != nil {
+		return err
+	}
 	if len(queue) > 0 && opts.Review != nil && blocked == 0 && unmapped == 0 {
 		queue, err = opts.Review(queue)
 		if err != nil {
@@ -255,8 +275,7 @@ func Sync(ctx context.Context, dir string, config Config, frames []store.Frame, 
 			}
 		}
 		for _, r := range queue {
-			key := receiptKey(c, opts.Connection, r.FrameID)
-			ledger.Records[key] = r
+			saveReceipt(&ledger, c, opts.Connection, r)
 			if err := SaveLedger(dir, ledger); err != nil {
 				return err
 			}
@@ -273,7 +292,7 @@ func Sync(ctx context.Context, dir string, config Config, frames []store.Frame, 
 			r.RemoteID = response.RemoteID
 			r.Status = "synced"
 			r.SyncedAt = time.Now().UTC().Format(time.RFC3339)
-			ledger.Records[key] = r
+			saveReceipt(&ledger, c, opts.Connection, r)
 			if err := SaveLedger(dir, ledger); err != nil {
 				return fmt.Errorf("remote entry %s created but receipt update failed; do not upload again: %w", r.RemoteID, err)
 			}
@@ -312,6 +331,6 @@ func Resolve(ctx context.Context, dir, name, id, remote string, c Connection, ca
 	r.RemoteID = remote
 	r.Status = "synced"
 	r.SyncedAt = time.Now().UTC().Format(time.RFC3339)
-	l.Records[key] = r
+	saveReceipt(&l, c, name, r)
 	return SaveLedger(dir, l)
 }

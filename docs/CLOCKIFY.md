@@ -91,10 +91,14 @@ its clock start time. Modes are `off`, `up`, and `nearest`. Nearest rounds ties
 up; if it would produce zero seconds, the entry is blocked for correction.
 
 With `up` and `15m`, 16 minutes exports as 30 minutes, while exactly 15 minutes
-stays 15. Three two-minute entries each export as 15 minutes. The remote end is
-the original start plus the exported duration. Adjacent entries can therefore
-overlap, and an entry close to midnight can extend into the following day.
-The review shows those timestamps before uploading.
+stays 15. Three two-minute entries with matching project, tags, and billable
+status on the same local day become one 45-minute upload. The combined entry
+starts at the earliest source start; its end is that start plus the summed rounded
+durations, excluding gaps. Different days and different tags remain separate.
+Combined intervals can overlap other uploads or extend into the following day.
+Previously uploaded entries stay untouched; new entries on that day form a new
+upload. Receipts track every source frame, so retries and reconciliation apply
+to the entire combined upload.
 
 The local record always retains the exact original duration. Clockify consumers
 that calculate hours from start/end timestamps see the exported duration.
